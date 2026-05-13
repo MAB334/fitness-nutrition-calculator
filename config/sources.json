@@ -1,0 +1,75 @@
+{
+  "sources": [
+    {
+      "key": "usda_full_csv",
+      "name": "USDA FoodData Central Full CSV",
+      "provider": "USDA FoodData Central",
+      "url": "https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_csv_2026-04-30.zip",
+      "filename": "FoodData_Central_csv_2026-04-30.zip",
+      "format": "zip",
+      "update_frequency": "Twice yearly",
+      "license_note": "USDA open government data"
+    },
+    {
+      "key": "usda_foundation_json",
+      "name": "USDA Foundation Foods JSON",
+      "provider": "USDA FoodData Central",
+      "url": "https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_foundation_food_json_2026-04-30.zip",
+      "filename": "FoodData_Central_foundation_food_json_2026-04-30.zip",
+      "format": "zip",
+      "update_frequency": "Twice yearly",
+      "license_note": "USDA open government data"
+    },
+    {
+      "key": "usda_sr_legacy_json",
+      "name": "USDA SR Legacy JSON",
+      "provider": "USDA FoodData Central",
+      "url": "https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_sr_legacy_food_json_2018-04.zip",
+      "filename": "FoodData_Central_sr_legacy_food_json_2018-04.zip",
+      "format": "zip",
+      "update_frequency": "Static legacy snapshot",
+      "license_note": "USDA open government data"
+    },
+    {
+      "key": "usda_survey_json",
+      "name": "USDA Survey Foods JSON",
+      "provider": "USDA FoodData Central",
+      "url": "https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_survey_food_json_2024-10-31.zip",
+      "filename": "FoodData_Central_survey_food_json_2024-10-31.zip",
+      "format": "zip",
+      "update_frequency": "Periodic",
+      "license_note": "USDA open government data"
+    },
+    {
+      "key": "usda_branded_json",
+      "name": "USDA Branded Foods JSON",
+      "provider": "USDA FoodData Central",
+      "url": "https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_branded_food_json_2026-04-30.zip",
+      "filename": "FoodData_Central_branded_food_json_2026-04-30.zip",
+      "format": "zip",
+      "update_frequency": "Twice yearly",
+      "license_note": "USDA open government data"
+    },
+    {
+      "key": "open_food_facts_csv",
+      "name": "Open Food Facts CSV Export",
+      "provider": "Open Food Facts",
+      "url": "https://static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv.gz",
+      "filename": "en.openfoodfacts.org.products.csv.gz",
+      "format": "gz",
+      "update_frequency": "Nightly",
+      "license_note": "Open Database License (ODbL) and Database Contents License"
+    },
+    {
+      "key": "open_food_facts_jsonl",
+      "name": "Open Food Facts JSONL Export",
+      "provider": "Open Food Facts",
+      "url": "https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz",
+      "filename": "openfoodfacts-products.jsonl.gz",
+      "format": "gz",
+      "update_frequency": "Nightly",
+      "license_note": "Open Database License (ODbL) and Database Contents License"
+    }
+  ]
+}
+

@@ -1,0 +1,32 @@
+{
+  "sources": [
+    {
+      "key": "chinanutri_fq",
+      "name": "China food composition query platform",
+      "provider": "China CDC Nutrition Institute / Chinese Nutrition Society",
+      "home_url": "https://nlc.chinanutri.cn/fq/",
+      "list_api": "https://nlc.chinanutri.cn/fq/FoodInfoQueryAction!queryFoodInfoList.do",
+      "detail_url_template": "https://nlc.chinanutri.cn/fq/foodinfo/{id}.html",
+      "license_note": "Public query pages; follow the site terms for downstream use."
+    },
+    {
+      "key": "chinanutri_nlc",
+      "name": "China packaged food nutrition label query system",
+      "provider": "China CDC Nutrition Institute",
+      "home_url": "https://nlc.chinanutri.cn/",
+      "search_api": "https://nlc.chinanutri.cn/FoodQueryAction!queryFoodList.do",
+      "list_url_template": "https://nlc.chinanutri.cn/foodlist__{page}.htm",
+      "detail_url_template": "https://nlc.chinanutri.cn/food/{id}.html",
+      "license_note": "Public query pages; follow the site terms for downstream use."
+    },
+    {
+      "key": "fatsecret_cn",
+      "name": "FatSecret China food directory",
+      "provider": "fatsecret.cn",
+      "home_url": "https://www.fatsecret.cn/",
+      "brands_url_template": "https://www.fatsecret.cn/Default.aspx?pa=brands&f={letter}&t={brand_type}",
+      "search_url_template": "https://www.fatsecret.cn/%E7%83%AD%E9%87%8F%E8%90%A5%E5%85%BB/search?q={query}",
+      "license_note": "Public directory pages on the China site; follow the site terms for downstream use."
+    }
+  ]
+}

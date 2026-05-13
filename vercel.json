@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "python scripts/prepare_vercel_bundle.py",
+  "outputDirectory": "public",
+  "rewrites": [
+    {
+      "source": "/api/day-summary",
+      "destination": "/api/day_summary"
+    },
+    {
+      "source": "/api/foods/bulk-resolve",
+      "destination": "/api/foods/bulk_resolve"
+    }
+  ],
+  "functions": {
+    "api/**/*.py": {
+      "maxDuration": 60
+    }
+  }
+}

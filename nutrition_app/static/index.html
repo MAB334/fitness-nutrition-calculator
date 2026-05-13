@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>健身摄食计算器</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="hero-panel">
+        <div class="hero-topline">
+          <div>
+            <p class="eyebrow">Nutrition Log</p>
+            <h1>今天吃了多少</h1>
+          </div>
+          <span id="hero-goal-badge" class="hero-goal-badge">维持</span>
+        </div>
+        <div class="hero-main">
+          <div class="hero-copy-group">
+            <p id="hero-status" class="hero-copy">先把今天吃过的东西快速记下来，再看热量和蛋白质是否到位。</p>
+            <div id="hero-kpis" class="hero-kpis"></div>
+          </div>
+          <div class="hero-orb">
+            <span id="hero-orb-value" class="hero-orb-value">0</span>
+            <span id="hero-orb-note" class="hero-orb-note">今日 kcal</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="card summary-card">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Today</p>
+            <h2>今日总览</h2>
+          </div>
+          <span id="entries-count" class="section-chip">0 项记录</span>
+        </div>
+        <div id="progress-list" class="progress-list"></div>
+        <div id="summary-metrics" class="metric-grid"></div>
+        <div id="target-metrics" class="target-grid"></div>
+      </section>
+
+      <section id="profile-card" class="card profile-card">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Profile</p>
+            <h2>身体指标</h2>
+          </div>
+          <div class="profile-actions">
+            <button id="toggle-profile-btn" class="ghost-btn profile-toggle-btn" type="button" aria-expanded="true">收起</button>
+            <button id="save-profile-btn" class="ghost-btn" type="button">保存并收起</button>
+          </div>
+        </div>
+        <div id="profile-summary" class="profile-summary hidden">
+          <p id="profile-summary-text" class="profile-summary-text"></p>
+        </div>
+        <div id="profile-body" class="profile-body">
+          <form id="profile-form" class="profile-grid">
+            <label>
+              <span>性别</span>
+              <select name="sex">
+                <option value="male">男</option>
+                <option value="female">女</option>
+              </select>
+            </label>
+            <label>
+              <span>年龄</span>
+              <input name="age" type="number" min="14" max="80" />
+            </label>
+            <label>
+              <span>身高(cm)</span>
+              <input name="height_cm" type="number" min="120" max="240" step="0.1" />
+            </label>
+            <label>
+              <span>体重(kg)</span>
+              <input name="weight_kg" type="number" min="30" max="250" step="0.1" />
+            </label>
+            <label>
+              <span>活动量</span>
+              <select name="activity_level">
+                <option value="low">偏低</option>
+                <option value="moderate">中等</option>
+                <option value="high">偏高</option>
+              </select>
+            </label>
+            <label>
+              <span>目标</span>
+              <select name="goal">
+                <option value="lose">减脂</option>
+                <option value="maintain">维持</option>
+                <option value="gain">增肌</option>
+              </select>
+            </label>
+          </form>
+        </div>
+        <p id="profile-storage-note" class="profile-storage-note"></p>
+      </section>
+
+      <section class="card capture-card">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Quick Capture</p>
+            <h2>快速录入</h2>
+          </div>
+          <span class="section-chip">按碗 / 杯 / 勺 / 盒来记</span>
+        </div>
+
+        <div class="capture-layout">
+          <div class="bulk-card">
+            <div class="bulk-head">
+              <div>
+                <h3>批量录入</h3>
+                <p>一行一条，最适合快速回忆整天饮食。</p>
+              </div>
+              <label class="bulk-default-meal">
+                <span>默认餐次</span>
+                <select id="bulk-default-meal-select">
+                  <option value="breakfast">早餐</option>
+                  <option value="lunch">午餐</option>
+                  <option value="dinner">晚餐</option>
+                  <option value="snack">加餐</option>
+                </select>
+              </label>
+            </div>
+            <div class="example-chips">
+              <span>早餐 燕麦 两勺</span>
+              <span>午餐 鸡胸肉 壹份</span>
+              <span>晚餐 米饭 半碗</span>
+            </div>
+            <textarea id="bulk-input" rows="7" placeholder="早餐 燕麦片 两勺&#10;早餐 蛋白粉 壹勺&#10;午餐 鸡胸肉 一份&#10;午餐 米饭 半碗"></textarea>
+            <div class="bulk-actions">
+              <button id="bulk-add-btn" type="button">批量解析并加入</button>
+              <span id="bulk-feedback" class="hint">未解析</span>
+            </div>
+            <div id="bulk-preview" class="bulk-preview hidden"></div>
+          </div>
+
+          <div class="manual-card">
+            <div class="manual-head">
+              <div>
+                <h3>单个搜索</h3>
+                <p>更适合补记某一项，或者挑选更准确的品牌。</p>
+              </div>
+            </div>
+            <div class="search-row">
+              <input id="food-search-input" type="search" placeholder="比如：鸡胸肉、燕麦、蛋白粉、豆浆" />
+              <button id="food-search-btn" type="button">搜索</button>
+            </div>
+            <div id="quick-tags" class="quick-tags">
+              <button class="tag-btn" type="button" data-query="鸡胸肉">鸡胸肉</button>
+              <button class="tag-btn" type="button" data-query="燕麦">燕麦</button>
+              <button class="tag-btn" type="button" data-query="蛋白粉">蛋白粉</button>
+              <button class="tag-btn" type="button" data-query="无糖豆浆">无糖豆浆</button>
+              <button class="tag-btn" type="button" data-query="希腊酸奶">希腊酸奶</button>
+              <button class="tag-btn" type="button" data-query="全麦面包">全麦面包</button>
+            </div>
+            <div class="history-stack">
+              <section class="history-card">
+                <div class="history-head">
+                  <h4>最近使用</h4>
+                  <span id="recent-food-count" class="history-count"></span>
+                </div>
+                <div id="recent-foods" class="history-chips"></div>
+              </section>
+              <section class="history-card">
+                <div class="history-head">
+                  <h4>常吃食物</h4>
+                  <span id="common-food-count" class="history-count"></span>
+                </div>
+                <div id="common-foods" class="history-chips"></div>
+              </section>
+            </div>
+            <div id="search-results" class="search-results"></div>
+
+            <div id="selected-food-panel" class="selected-food hidden">
+              <div class="selected-summary">
+                <p id="selected-food-state-label" class="selected-label">已选择</p>
+                <h3 id="selected-food-name"></h3>
+                <p id="selected-food-meta" class="food-meta"></p>
+              </div>
+              <p id="selected-portion-hint" class="selected-portion-hint">数量可填 1、2、两、半，单位从右侧固定选。</p>
+              <div class="selected-controls">
+                <label>
+                  <span>餐次</span>
+                  <select id="meal-type-select">
+                    <option value="breakfast">早餐</option>
+                    <option value="lunch">午餐</option>
+                    <option value="dinner">晚餐</option>
+                    <option value="snack">加餐</option>
+                  </select>
+                </label>
+                <label>
+                  <span>数量</span>
+                  <input id="food-quantity-input" type="text" inputmode="decimal" value="1" placeholder="比如：1、2、两、半" />
+                </label>
+                <label>
+                  <span>单位</span>
+                  <select id="food-unit-select"></select>
+                </label>
+                <div class="selected-action-group">
+                  <button id="add-food-btn" type="button">加入记录</button>
+                  <button id="cancel-edit-btn" class="ghost-btn hidden" type="button">取消编辑</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card entries-card">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Timeline</p>
+            <h2>餐次明细</h2>
+          </div>
+          <button id="clear-entries-btn" class="ghost-btn danger-ghost" type="button">清空记录</button>
+        </div>
+        <div id="meal-groups" class="meal-groups"></div>
+      </section>
+    </main>
+
+    <template id="search-result-template">
+      <button class="search-item" type="button">
+        <div class="search-copy">
+          <h3 class="food-name"></h3>
+          <p class="food-meta"></p>
+        </div>
+        <div class="food-macros"></div>
+      </button>
+    </template>
+
+    <template id="bulk-preview-template">
+      <div class="bulk-preview-item">
+        <div>
+          <strong class="bulk-preview-title"></strong>
+          <p class="bulk-preview-meta"></p>
+        </div>
+        <span class="bulk-preview-badge"></span>
+      </div>
+    </template>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
