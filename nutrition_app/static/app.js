@@ -1,3 +1,12 @@
+import {
+  buildDaySummary,
+  getFood,
+  parseQuantityText,
+  resolveBulkEntries,
+  searchFoods,
+  warmupCatalog,
+} from "/static/lib/nutrition-service.js";
+
 const storageKeys = {
   profile: "nutrition-profile",
   entries: "nutrition-entries",
@@ -61,45 +70,6 @@ const heroOrbValue = document.getElementById("hero-orb-value");
 const heroOrbNote = document.getElementById("hero-orb-note");
 const progressList = document.getElementById("progress-list");
 
-const chineseDigitValues = {
-  零: 0,
-  〇: 0,
-  一: 1,
-  二: 2,
-  两: 2,
-  兩: 2,
-  俩: 2,
-  倆: 2,
-  三: 3,
-  四: 4,
-  五: 5,
-  六: 6,
-  七: 7,
-  八: 8,
-  九: 9,
-  壹: 1,
-  贰: 2,
-  叁: 3,
-  肆: 4,
-  伍: 5,
-  陆: 6,
-  陸: 6,
-  柒: 7,
-  捌: 8,
-  玖: 9,
-};
-
-const chineseUnitValues = {
-  十: 10,
-  拾: 10,
-  百: 100,
-  佰: 100,
-  千: 1000,
-  仟: 1000,
-  万: 10000,
-  萬: 10000,
-};
-
 function createFallbackPortions(entry) {
   const portions = [];
   if (entry.quantity && entry.unit_label && entry.grams) {
@@ -111,7 +81,7 @@ function createFallbackPortions(entry) {
     });
   }
   if (!portions.some((item) => item.key === "gram")) {
-    portions.push({ key: "gram", label: "克", grams_per_unit: 1, aliases: ["g"] });
+    portions.push({ key: "gram", label: "克", grams_per_unit: 1, aliases: ["g", "G"] });
   }
   return portions;
 }
@@ -125,6 +95,104 @@ function hydratePreview(preview, entry = {}) {
     hydrated.portions = createFallbackPortions(entry);
   }
   return hydrated;
+}
+
+function buildEntryId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  return `entry-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function formatNumber(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return "0";
+  }
+  return Number(value).toFixed(1).replace(/\.0$/, "");
+}
+
+function formatDiff(value, unit) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return `0 ${unit}`;
+  }
+  const numeric = Number(value);
+  return `${numeric > 0 ? "+" : ""}${formatNumber(numeric)} ${unit}`;
+}
+
+function goalLabel(goal) {
+  return {
+    lose: "减脂期",
+    maintain: "维持期",
+    gain: "增肌期",
+  }[goal] || "今日目标";
+}
+
+function activityLabel(level) {
+  return {
+    low: "活动偏低",
+    moderate: "活动中等",
+    high: "活动偏高",
+  }[level] || "活动未设置";
+}
+
+function mealLabel(mealType) {
+  return {
+    breakfast: "早餐",
+    lunch: "午餐",
+    dinner: "晚餐",
+    snack: "加餐",
+  }[mealType] || mealType;
+}
+
+function prettyFoodType(foodType) {
+  return {
+    basic_food: "基础食材",
+    dish_recipe: "家常菜",
+    packaged_food: "包装食品",
+    market_food: "商品食物",
+  }[foodType] || foodType;
+}
+
+function compactCategoryLabel(category) {
+  const raw = String(category || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const primary = raw.split("-")[0].split("/")[0].trim();
+  return primary.length <= 10 ? primary : `${primary.slice(0, 10)}...`;
+}
+
+function buildPortionSummary(portions, maxItems = 1) {
+  return (portions || [])
+    .slice(0, maxItems)
+    .map((portion) => `1${portion.label}≈${formatNumber(portion.grams_per_unit)}g`)
+    .join(" / ");
+}
+
+function buildMetaPrefix(item) {
+  const typeLabel = item.food_type === "dish_recipe" ? "家常菜" : prettyFoodType(item.food_type);
+  const categoryLabel = compactCategoryLabel(item.category_top);
+  if (typeLabel && categoryLabel && typeLabel === categoryLabel) {
+    return [typeLabel];
+  }
+  return [typeLabel, categoryLabel].filter(Boolean);
+}
+
+function buildSearchMeta(item) {
+  return [...buildMetaPrefix(item), buildPortionSummary(item.portions || [], 1)].filter(Boolean).join(" · ");
+}
+
+function buildSelectedMeta(item) {
+  return [...buildMetaPrefix(item), `${formatNumber(item.energy_kcal_100g)} kcal/100g`, `P ${formatNumber(item.protein_g_100g)}g`]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function formatEntryAmount(entry) {
+  if (entry.quantity && entry.unit_label) {
+    return `${formatNumber(entry.quantity)}${entry.unit_label}`;
+  }
+  return `${formatNumber(entry.grams)}克`;
 }
 
 function loadState() {
@@ -156,7 +224,7 @@ function saveProfile(options = {}) {
   if (collapseAfterSave) {
     setProfileCollapsed(true);
   }
-  refreshSummary();
+  void refreshSummary();
 }
 
 function saveEntries() {
@@ -200,10 +268,12 @@ function renderProfileSummary() {
 function renderProfileStorageNote() {
   const entryCount = Array.isArray(state.entries) ? state.entries.length : 0;
   if (entryCount > 0) {
-    profileStorageNote.textContent = `当前浏览器已自动保存身体参数和 ${entryCount} 条饮食记录；同一设备再次打开会恢复，换浏览器、换设备或清理浏览器数据后不会同步。`;
+    profileStorageNote.textContent =
+      `当前浏览器已自动保存身体参数和 ${entryCount} 条饮食记录；同一设备再次打开会恢复，换浏览器、换设备或清理浏览器数据后不会同步。`;
     return;
   }
-  profileStorageNote.textContent = "身体参数和饮食记录会自动保存在当前浏览器；同一设备再次打开会恢复，换浏览器、换设备或清理浏览器数据后不会同步。";
+  profileStorageNote.textContent =
+    "身体参数和饮食记录会自动保存在当前浏览器；同一设备再次打开会恢复，换浏览器、换设备或清理浏览器数据后不会同步。";
 }
 
 function renderHistoryGroup(container, countNode, items, emptyText) {
@@ -216,6 +286,7 @@ function renderHistoryGroup(container, countNode, items, emptyText) {
     container.appendChild(empty);
     return;
   }
+
   for (const item of items) {
     const button = document.createElement("button");
     button.className = "history-chip";
@@ -228,8 +299,8 @@ function renderHistoryGroup(container, countNode, items, emptyText) {
 
 function renderEntryCollections() {
   const recentItems = [];
-  const commonMap = new Map();
   const recentSeen = new Set();
+  const commonMap = new Map();
 
   for (let index = state.entries.length - 1; index >= 0; index -= 1) {
     const entry = state.entries[index];
@@ -292,22 +363,28 @@ function renderSearchResults(items) {
   for (const item of items) {
     const node = template.content.firstElementChild.cloneNode(true);
     node.querySelector(".food-name").textContent = item.display_name;
-    const portionHint = (item.portions || [])
-      .slice(0, 2)
-      .map((portion) => `1${portion.label}~${formatNumber(portion.grams_per_unit)}g`)
-      .join(" / ");
-    node.querySelector(".food-meta").textContent = [prettyFoodType(item.food_type), item.category_top, portionHint]
-      .filter(Boolean)
-      .join(" · ");
+    node.querySelector(".food-meta").textContent = buildSearchMeta(item);
     node.querySelector(".food-macros").textContent = [
       `${formatNumber(item.energy_kcal_100g)} kcal`,
       `P ${formatNumber(item.protein_g_100g)}g`,
       `C ${formatNumber(item.carb_g_100g)}g`,
       `F ${formatNumber(item.fat_g_100g)}g`,
     ].join("  ");
-    node.querySelector(".food-meta").textContent = buildSearchMeta(item);
     node.addEventListener("click", () => selectFood(item));
     searchResults.appendChild(node);
+  }
+}
+
+function renderUnitOptions(portions) {
+  foodUnitSelect.innerHTML = "";
+  for (const option of portions) {
+    const node = document.createElement("option");
+    node.value = option.key;
+    node.textContent = `${option.label} · 约 ${formatNumber(option.grams_per_unit)}g`;
+    foodUnitSelect.appendChild(node);
+  }
+  if (foodUnitSelect.options.length) {
+    foodUnitSelect.selectedIndex = 0;
   }
 }
 
@@ -330,15 +407,7 @@ function selectFood(item, options = {}) {
   selectedFoodStateLabel.textContent = stateLabel;
   selectedFoodName.textContent = state.selectedFood.display_name;
   selectedFoodMeta.textContent = buildSelectedMeta(state.selectedFood);
-  selectedFoodMeta.textContent = [
-    prettyFoodType(state.selectedFood.food_type),
-    state.selectedFood.category_top,
-    `${formatNumber(state.selectedFood.energy_kcal_100g)} kcal/100g`,
-    `P ${formatNumber(state.selectedFood.protein_g_100g)}g`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  selectedFoodMeta.textContent = buildSelectedMeta(state.selectedFood);
+
   renderUnitOptions(state.selectedFood.portions || []);
   if (mealType) {
     mealTypeSelect.value = mealType;
@@ -350,6 +419,7 @@ function selectFood(item, options = {}) {
   addFoodBtn.textContent = editingEntryId ? "保存修改" : "加入记录";
   cancelEditBtn.classList.toggle("hidden", !editingEntryId);
   updateSelectedPortionHint();
+
   requestAnimationFrame(() => {
     selectedFoodPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
     foodQuantityInput.focus();
@@ -357,28 +427,66 @@ function selectFood(item, options = {}) {
   });
 }
 
-function renderUnitOptions(portions) {
-  foodUnitSelect.innerHTML = "";
-  for (const option of portions) {
-    const node = document.createElement("option");
-    node.value = option.key;
-    node.textContent = `${option.label} · 约 ${formatNumber(option.grams_per_unit)}g`;
-    foodUnitSelect.appendChild(node);
-  }
-  if (foodUnitSelect.options.length) {
-    foodUnitSelect.selectedIndex = 0;
-  }
-  updateSelectedPortionHint();
-}
-
-async function searchFoods(query) {
-  if (!query.trim()) {
-    searchResults.innerHTML = '<p class="empty-state">输入关键词后再搜索，也可以直接点上面的最近使用或常吃食物。</p>';
+function updateSelectedPortionHint() {
+  if (!state.selectedFood) {
+    selectedPortionHint.textContent = "数量可填 1、2、1.5、两、半，单位从右侧固定选。";
     return;
   }
-  const response = await fetch(`/api/foods/search?q=${encodeURIComponent(query)}&limit=12`);
-  const payload = await response.json();
-  renderSearchResults(payload.items || []);
+  const portion = (state.selectedFood.portions || []).find((item) => item.key === foodUnitSelect.value);
+  const quantity = parseQuantityText(foodQuantityInput.value);
+  if (!portion) {
+    selectedPortionHint.textContent = "先选一个固定单位，再填写数量。";
+    return;
+  }
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    selectedPortionHint.textContent = `数量支持 1、2、1.5、两、半；当前单位 1${portion.label} 约 ${formatNumber(portion.grams_per_unit)}g。`;
+    return;
+  }
+  const grams = quantity * Number(portion.grams_per_unit);
+  selectedPortionHint.textContent = `当前将加入 ${formatNumber(quantity)}${portion.label}，约 ${formatNumber(grams)}g。`;
+}
+
+function exitEditMode() {
+  state.editingEntryId = null;
+  if (state.selectedFood) {
+    selectFood(state.selectedFood);
+  } else {
+    selectedFoodStateLabel.textContent = "已选择";
+    addFoodBtn.textContent = "加入记录";
+    cancelEditBtn.classList.add("hidden");
+  }
+}
+
+async function beginEditEntry(entryId) {
+  const entry = state.entries.find((item) => item.id === entryId);
+  if (!entry) {
+    return;
+  }
+  let preview = hydratePreview(entry.preview, entry);
+  if (!preview) {
+    const food = await getFood(entry.source, entry.source_food_id);
+    if (!food) {
+      window.alert("这条记录缺少可编辑的食物信息，请先删除后重新添加。");
+      return;
+    }
+    preview = hydratePreview(food, entry);
+  }
+  selectFood(preview, {
+    editingEntryId: entry.id,
+    quantity: entry.quantity || 1,
+    unitKey: entry.unit_key || null,
+    mealType: entry.meal_type,
+    stateLabel: "正在编辑",
+  });
+}
+
+async function searchFoodsAction(query) {
+  if (!query.trim()) {
+    renderSearchResults(await searchFoods("", 12));
+    return;
+  }
+  const items = await searchFoods(query, 12);
+  renderSearchResults(items);
 }
 
 async function addSelectedFood() {
@@ -388,9 +496,10 @@ async function addSelectedFood() {
   const quantity = parseQuantityText(foodQuantityInput.value);
   const portion = (state.selectedFood.portions || []).find((item) => item.key === foodUnitSelect.value);
   if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 50 || !portion) {
-    window.alert("请输入有效数量。支持 1、2、1.5、两、半、壹 这类写法。");
+    window.alert("请输入有效数量。支持 1、2、1.5、两、半 这类写法。");
     return;
   }
+
   addFoodBtn.disabled = true;
   cancelEditBtn.disabled = true;
   try {
@@ -411,6 +520,7 @@ async function addSelectedFood() {
         grams,
       }),
     };
+
     if (state.editingEntryId) {
       nextEntry.id = state.editingEntryId;
       state.entries = state.entries.map((entry) => (entry.id === state.editingEntryId ? nextEntry : entry));
@@ -418,60 +528,39 @@ async function addSelectedFood() {
     } else {
       state.entries.push(nextEntry);
     }
+
     saveEntries();
     await refreshSummary();
   } catch (error) {
     console.error(error);
-    window.alert("Save failed. Please try again.");
+    window.alert("保存失败，请重试。");
   } finally {
     addFoodBtn.disabled = false;
     cancelEditBtn.disabled = false;
   }
 }
 
-function updateSelectedPortionHint() {
-  if (!state.selectedFood) {
-    selectedPortionHint.textContent = "数量可填 1、2、两、半，单位从右侧固定选。";
-    return;
-  }
-  const portion = (state.selectedFood.portions || []).find((item) => item.key === foodUnitSelect.value);
-  const quantity = parseQuantityText(foodQuantityInput.value);
-  if (!portion) {
-    selectedPortionHint.textContent = "先选一个固定单位，再填写数量。";
-    return;
-  }
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    selectedPortionHint.textContent = `数量支持 1、2、1.5、两、半、壹；当前单位 1${portion.label} 约 ${formatNumber(portion.grams_per_unit)}g。`;
-    return;
-  }
-  const grams = quantity * Number(portion.grams_per_unit);
-  selectedPortionHint.textContent = `当前将加入 ${formatNumber(quantity)}${portion.label}，约 ${formatNumber(grams)}g。`;
-}
+function renderBulkPreview(resolved, unresolved) {
+  bulkPreview.innerHTML = "";
+  bulkPreview.classList.remove("hidden");
+  const template = document.getElementById("bulk-preview-template");
 
-function exitEditMode() {
-  state.editingEntryId = null;
-  if (state.selectedFood) {
-    selectFood(state.selectedFood);
-  } else {
-    selectedFoodStateLabel.textContent = "已选择";
-    addFoodBtn.textContent = "加入记录";
-    cancelEditBtn.classList.add("hidden");
+  for (const item of resolved) {
+    const node = template.content.firstElementChild.cloneNode(true);
+    node.querySelector(".bulk-preview-title").textContent = `${mealLabel(item.meal_type)} · ${item.food.display_name}`;
+    node.querySelector(".bulk-preview-meta").textContent = `${item.raw_line} → ${formatNumber(item.quantity)}${item.unit_label}，约 ${formatNumber(item.grams)} g`;
+    node.querySelector(".bulk-preview-badge").textContent = "已匹配";
+    bulkPreview.appendChild(node);
   }
-}
 
-function beginEditEntry(entryId) {
-  const sourceEntry = state.entries.find((item) => item.id === entryId);
-  if (!sourceEntry || !sourceEntry.preview) {
-    window.alert("这条记录缺少可编辑的食物信息，请先删除后重新添加。");
-    return;
+  for (const item of unresolved) {
+    const node = template.content.firstElementChild.cloneNode(true);
+    node.classList.add("bulk-preview-item-error");
+    node.querySelector(".bulk-preview-title").textContent = item.raw_line;
+    node.querySelector(".bulk-preview-meta").textContent = item.reason;
+    node.querySelector(".bulk-preview-badge").textContent = "失败";
+    bulkPreview.appendChild(node);
   }
-  selectFood(sourceEntry.preview, {
-    editingEntryId: sourceEntry.id,
-    quantity: sourceEntry.quantity || 1,
-    unitKey: sourceEntry.unit_key || null,
-    mealType: sourceEntry.meal_type,
-    stateLabel: "正在编辑",
-  });
 }
 
 async function addBulkFoods() {
@@ -483,22 +572,19 @@ async function addBulkFoods() {
   bulkAddBtn.disabled = true;
   bulkFeedback.textContent = "解析中...";
   try {
-    const response = await fetch("/api/foods/bulk-resolve", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text,
-        default_meal_type: bulkDefaultMealSelect.value,
-      }),
+    const payload = await resolveBulkEntries({
+      text,
+      default_meal_type: bulkDefaultMealSelect.value,
     });
-    const payload = await response.json();
     const resolved = payload.resolved || [];
     const unresolved = payload.unresolved || [];
     renderBulkPreview(resolved, unresolved);
+
     if (!resolved.length) {
       bulkFeedback.textContent = `0 条加入，${unresolved.length} 条失败`;
       return;
     }
+
     for (const item of resolved) {
       state.entries.push({
         id: buildEntryId(),
@@ -517,6 +603,7 @@ async function addBulkFoods() {
         }),
       });
     }
+
     saveEntries();
     await refreshSummary();
     bulkFeedback.textContent = `${resolved.length} 条已加入${unresolved.length ? `，${unresolved.length} 条未识别` : ""}`;
@@ -531,24 +618,95 @@ async function addBulkFoods() {
   }
 }
 
-function renderBulkPreview(resolved, unresolved) {
-  bulkPreview.innerHTML = "";
-  bulkPreview.classList.remove("hidden");
-  const template = document.getElementById("bulk-preview-template");
-  for (const item of resolved) {
-    const node = template.content.firstElementChild.cloneNode(true);
-    node.querySelector(".bulk-preview-title").textContent = `${mealLabel(item.meal_type)} · ${item.food.display_name}`;
-    node.querySelector(".bulk-preview-meta").textContent = `${item.raw_line} → ${formatNumber(item.quantity)}${item.unit_label}，约 ${formatNumber(item.grams)} g`;
-    node.querySelector(".bulk-preview-badge").textContent = "已匹配";
-    bulkPreview.appendChild(node);
+function buildMetricCard(label, value) {
+  const node = document.createElement("article");
+  node.className = "metric-card";
+  node.innerHTML = `<p>${label}</p><strong>${value}</strong>`;
+  return node;
+}
+
+function buildMetricRow(label, value, extra) {
+  const node = document.createElement("article");
+  node.className = "target-row";
+  node.innerHTML = `<p>${label}</p><strong>${value}</strong><span>${extra || ""}</span>`;
+  return node;
+}
+
+function buildRatio(current, target) {
+  const safeTarget = Number(target || 0);
+  if (!safeTarget) {
+    return 0;
   }
-  for (const item of unresolved) {
-    const node = template.content.firstElementChild.cloneNode(true);
-    node.classList.add("bulk-preview-item-error");
-    node.querySelector(".bulk-preview-title").textContent = item.raw_line;
-    node.querySelector(".bulk-preview-meta").textContent = item.reason;
-    node.querySelector(".bulk-preview-badge").textContent = "失败";
-    bulkPreview.appendChild(node);
+  return Number(current || 0) / safeTarget;
+}
+
+function buildHeroMessage(proteinRatio, kcalDiff) {
+  if (proteinRatio < 0.65) {
+    return "今天的蛋白质还偏低，优先补高蛋白食物会比纠结热量更有效。";
+  }
+  if (kcalDiff > 220) {
+    return "今天热量已经明显超出目标，后面的加餐尽量选更轻一点。";
+  }
+  if (kcalDiff < -280) {
+    return "今天摄入还偏少，如果正在训练，后续可以适当补一点主食或蛋白。";
+  }
+  return "整体节奏还不错，继续把剩下的餐次按份量记完，结果会更准。";
+}
+
+function buildProgressRow(label, current, target, diff, unit, ratio, stateClass) {
+  const node = document.createElement("article");
+  node.className = `progress-row ${stateClass}`;
+  const fillWidth = Math.max(0, Math.min(100, ratio * 100));
+  node.innerHTML = `
+    <div class="progress-row-head">
+      <span class="progress-row-title">${label}</span>
+      <span class="progress-row-value">${formatNumber(current)} / ${formatNumber(target)} ${unit} · ${formatDiff(diff, unit)}</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" style="width:${fillWidth}%"></div>
+    </div>
+  `;
+  return node;
+}
+
+function renderHero(totals, targets, differences) {
+  heroGoalBadge.textContent = goalLabel(state.profile.goal);
+  heroOrbValue.textContent = formatNumber(totals.kcal);
+  heroOrbNote.textContent = `目标 ${formatNumber(targets.target_kcal)} kcal`;
+
+  const proteinRatio = buildRatio(totals.protein_g, targets.target_protein_g);
+  const kcalDiff = Number(differences.kcal || 0);
+  heroStatus.textContent = buildHeroMessage(proteinRatio, kcalDiff);
+
+  const kpis = [
+    ["记录数", `${state.entries.length} 项`],
+    ["蛋白完成", `${Math.round(proteinRatio * 100)}%`],
+    ["已摄入", `${formatNumber(totals.kcal)} kcal`],
+    ["目标差值", formatDiff(differences.kcal, "kcal")],
+  ];
+
+  heroKpis.innerHTML = "";
+  for (const [label, value] of kpis) {
+    const node = document.createElement("article");
+    node.className = "hero-kpi";
+    node.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
+    heroKpis.appendChild(node);
+  }
+}
+
+function renderProgress(totals, targets, differences) {
+  progressList.innerHTML = "";
+  const metrics = [
+    ["热量", totals.kcal, targets.target_kcal, differences.kcal, "kcal"],
+    ["蛋白质", totals.protein_g, targets.target_protein_g, differences.protein_g, "g"],
+    ["碳水", totals.carb_g, targets.target_carb_g, differences.carb_g, "g"],
+    ["脂肪", totals.fat_g, targets.target_fat_g, differences.fat_g, "g"],
+  ];
+
+  for (const [label, current, target, diff, unit] of metrics) {
+    const ratio = buildRatio(current, target);
+    const stateClass = ratio > 1.08 ? "over" : ratio < 0.82 ? "under" : "good";
+    progressList.appendChild(buildProgressRow(label, current, target, diff, unit, ratio, stateClass));
   }
 }
 
@@ -586,53 +744,16 @@ function renderSummary(summary) {
   }
 }
 
-function renderHero(totals, targets, differences) {
-  heroGoalBadge.textContent = goalLabel(state.profile.goal);
-  heroOrbValue.textContent = formatNumber(totals.kcal);
-  heroOrbNote.textContent = `目标 ${formatNumber(targets.target_kcal)} kcal`;
-
-  const proteinRatio = buildRatio(totals.protein_g, targets.target_protein_g);
-  const kcalDiff = Number(differences.kcal || 0);
-  heroStatus.textContent = buildHeroMessage(proteinRatio, kcalDiff);
-
-  const kpis = [
-    ["记录数", `${state.entries.length} 项`],
-    ["蛋白完成", `${Math.round(proteinRatio * 100)}%`],
-    ["已摄入", `${formatNumber(totals.kcal)} kcal`],
-    ["目标差值", formatDiff(differences.kcal, "kcal")],
-  ];
-  heroKpis.innerHTML = "";
-  for (const [label, value] of kpis) {
-    const node = document.createElement("article");
-    node.className = "hero-kpi";
-    node.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
-    heroKpis.appendChild(node);
-  }
-}
-
-function renderProgress(totals, targets, differences) {
-  progressList.innerHTML = "";
-  const metrics = [
-    ["热量", totals.kcal, targets.target_kcal, differences.kcal, "kcal"],
-    ["蛋白质", totals.protein_g, targets.target_protein_g, differences.protein_g, "g"],
-    ["碳水", totals.carb_g, targets.target_carb_g, differences.carb_g, "g"],
-    ["脂肪", totals.fat_g, targets.target_fat_g, differences.fat_g, "g"],
-  ];
-  for (const [label, current, target, diff, unit] of metrics) {
-    const ratio = buildRatio(current, target);
-    const stateClass = ratio > 1.08 ? "over" : ratio < 0.82 ? "under" : "good";
-    progressList.appendChild(buildProgressRow(label, current, target, diff, unit, ratio, stateClass));
-  }
-}
-
 function renderMeals(summary) {
   mealGroups.innerHTML = "";
   const meals = summary?.meals || [];
   let totalEntries = 0;
+
   for (const meal of meals) {
     totalEntries += meal.entries.length;
     const wrapper = document.createElement("section");
     wrapper.className = "meal-card";
+
     const header = document.createElement("div");
     header.className = "meal-header";
     header.innerHTML = `<h3>${meal.label}</h3><p>${formatNumber(meal.totals.kcal)} kcal · 蛋白 ${formatNumber(meal.totals.protein_g)} g</p>`;
@@ -661,23 +782,25 @@ function renderMeals(summary) {
             </div>
           </div>
         `;
-        row.querySelector(".edit-link").addEventListener("click", () => beginEditEntry(entry.entry_id));
-        row.querySelector(".danger-link").addEventListener("click", () => removeEntry(entry));
+        row.querySelector(".edit-link").addEventListener("click", () => void beginEditEntry(entry.entry_id));
+        row.querySelector(".danger-link").addEventListener("click", () => removeEntry(entry.entry_id));
         wrapper.appendChild(row);
       }
     }
+
     mealGroups.appendChild(wrapper);
   }
+
   entriesCount.textContent = `${totalEntries} 项记录`;
 }
 
-function removeEntry(entryToRemove) {
-  state.entries = state.entries.filter((item) => item.id !== entryToRemove.entry_id);
-  if (state.editingEntryId === entryToRemove.entry_id) {
+function removeEntry(entryId) {
+  state.entries = state.entries.filter((item) => item.id !== entryId);
+  if (state.editingEntryId === entryId) {
     exitEditMode();
   }
   saveEntries();
-  refreshSummary();
+  void refreshSummary();
 }
 
 async function refreshSummary() {
@@ -695,312 +818,26 @@ async function refreshSummary() {
       unit_label: entry.unit_label || null,
     })),
   };
-  const response = await fetch("/api/day-summary", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const summary = await response.json();
+  const summary = await buildDaySummary(payload);
   renderSummary(summary);
   renderMeals(summary);
 }
 
-function buildMetricCard(label, value) {
-  const node = document.createElement("article");
-  node.className = "metric-card";
-  node.innerHTML = `<p>${label}</p><strong>${value}</strong>`;
-  return node;
-}
-
-function buildMetricRow(label, value, extra) {
-  const node = document.createElement("article");
-  node.className = "target-row";
-  node.innerHTML = `<p>${label}</p><strong>${value}</strong><span>${extra || ""}</span>`;
-  return node;
-}
-
-function buildProgressRow(label, current, target, diff, unit, ratio, stateClass) {
-  const node = document.createElement("article");
-  node.className = `progress-row ${stateClass}`;
-  const fillWidth = Math.max(0, Math.min(100, ratio * 100));
-  node.innerHTML = `
-    <div class="progress-row-head">
-      <span class="progress-row-title">${label}</span>
-      <span class="progress-row-value">${formatNumber(current)} / ${formatNumber(target)} ${unit} · ${formatDiff(diff, unit)}</span>
-    </div>
-    <div class="progress-track">
-      <div class="progress-fill" style="width:${fillWidth}%"></div>
-    </div>
-  `;
-  return node;
-}
-
-function buildRatio(current, target) {
-  const safeTarget = Number(target || 0);
-  if (!safeTarget) {
-    return 0;
-  }
-  return Number(current || 0) / safeTarget;
-}
-
-function buildHeroMessage(proteinRatio, kcalDiff) {
-  if (proteinRatio < 0.65) {
-    return "今天的蛋白质还偏低，优先补高蛋白食物会比纠结热量更有效。";
-  }
-  if (kcalDiff > 220) {
-    return "今天热量已经明显超出目标，后面的加餐尽量选更轻一点。";
-  }
-  if (kcalDiff < -280) {
-    return "今天摄入还偏少，如果正在训练，后续可以适当补一点主食或蛋白。";
-  }
-  return "整体节奏还不错，继续把剩下的餐次按份量记完，结果会更准。";
-}
-
-function normalizeQuantityText(value) {
-  return String(value || "")
-    .trim()
-    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 65248))
-    .replace(/．/g, ".")
-    .replace(/[兩俩倆]/g, "两")
-    .replace(/[點点]/g, ".")
-    .toLowerCase();
-}
-
-function parseChineseInteger(text) {
-  if (!text) {
-    return null;
-  }
-  let total = 0;
-  let section = 0;
-  let number = 0;
-  let seen = false;
-  for (const char of text) {
-    if (Object.hasOwn(chineseDigitValues, char)) {
-      number = chineseDigitValues[char];
-      seen = true;
-      continue;
-    }
-    if (Object.hasOwn(chineseUnitValues, char)) {
-      const unit = chineseUnitValues[char];
-      seen = true;
-      if (unit >= 10000) {
-        section = (section + number) * unit;
-        total += section;
-        section = 0;
-      } else {
-        section += (number || 1) * unit;
-      }
-      number = 0;
-      continue;
-    }
-    return null;
-  }
-  return seen ? total + section + number : null;
-}
-
-function parseQuantityText(value) {
-  const normalized = normalizeQuantityText(value);
-  if (!normalized) {
-    return NaN;
-  }
-  if (/^\d+(?:\.\d+)?$/.test(normalized)) {
-    return Number(normalized);
-  }
-  if (normalized === "半") {
-    return 0.5;
-  }
-  if (normalized.endsWith("半")) {
-    const base = parseQuantityText(normalized.slice(0, -1));
-    if (Number.isFinite(base)) {
-      return base + 0.5;
-    }
-  }
-  if (normalized.includes(".")) {
-    const [leftText, rightText] = normalized.split(".", 2);
-    const leftValue = leftText ? parseQuantityText(leftText) : 0;
-    if (!Number.isFinite(leftValue) || !Number.isInteger(leftValue)) {
-      return NaN;
-    }
-    const digits = [];
-    for (const char of rightText) {
-      if (/\d/.test(char)) {
-        digits.push(char);
-        continue;
-      }
-      if (Object.hasOwn(chineseDigitValues, char)) {
-        digits.push(String(chineseDigitValues[char]));
-        continue;
-      }
-      return NaN;
-    }
-    return digits.length ? Number(`${leftValue}.${digits.join("")}`) : NaN;
-  }
-  const integerValue = parseChineseInteger(normalized);
-  return integerValue === null ? NaN : integerValue;
-}
-
-function formatNumber(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "0";
-  }
-  return Number(value).toFixed(1).replace(/\\.0$/, "");
-}
-
-function formatDiff(value, unit) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return `0 ${unit}`;
-  }
-  const numeric = Number(value);
-  const prefix = numeric > 0 ? "+" : "";
-  return `${prefix}${formatNumber(numeric)} ${unit}`;
-}
-
-function goalLabel(goal) {
-  return {
-    lose: "减脂中",
-    maintain: "维持期",
-    gain: "增肌期",
-  }[goal] || "今日目标";
-}
-
-function activityLabel(level) {
-  return {
-    low: "活动偏低",
-    moderate: "活动中等",
-    high: "活动偏高",
-  }[level] || "活动未设定";
-}
-
-function mealLabel(mealType) {
-  return {
-    breakfast: "早餐",
-    lunch: "午餐",
-    dinner: "晚餐",
-    snack: "加餐",
-  }[mealType] || mealType;
-}
-
-function compactCategoryLabel(category) {
-  const raw = String(category || "").trim();
-  if (!raw) {
-    return "";
-  }
-  const primary = raw.split("-")[0].split("/")[0].trim();
-  if (primary.length <= 10) {
-    return primary;
-  }
-  return `${primary.slice(0, 10)}...`;
-}
-
-function prettyFoodType(foodType) {
-  return {
-    basic_food: "基础食材",
-    packaged_food: "包装食品",
-    market_food: "商品食物",
-  }[foodType] || foodType;
-}
-
-function compactCategoryLabel(category) {
-  const raw = String(category || "").trim();
-  if (!raw) {
-    return "";
-  }
-  const primary = raw.split("-")[0].split("/")[0].trim();
-  if (primary.length <= 10) {
-    return primary;
-  }
-  return `${primary.slice(0, 10)}…`;
-}
-
-function buildPortionSummary(portions, maxItems = 1) {
-  return (portions || [])
-    .slice(0, maxItems)
-    .map((portion) => `1${portion.label}~${formatNumber(portion.grams_per_unit)}g`)
-    .join(" / ");
-}
-
-function buildSearchMeta(item) {
-  return [
-    item.food_type === "dish_recipe" ? "家常菜" : prettyFoodType(item.food_type),
-    compactCategoryLabel(item.category_top),
-    buildPortionSummary(item.portions || [], 1),
-  ]
-    .filter(Boolean)
-    .join(" 路 ");
-}
-
-function buildSelectedMeta(item) {
-  return [
-    item.food_type === "dish_recipe" ? "家常菜" : prettyFoodType(item.food_type),
-    compactCategoryLabel(item.category_top),
-    `${formatNumber(item.energy_kcal_100g)} kcal/100g`,
-    `P ${formatNumber(item.protein_g_100g)}g`,
-  ]
-    .filter(Boolean)
-    .join(" 路 ");
-}
-
-function formatEntryAmount(entry) {
-  if (entry.quantity && entry.unit_label) {
-    return `${formatNumber(entry.quantity)}${entry.unit_label}`;
-  }
-  return `${formatNumber(entry.grams)}克`;
-}
-
-function prettyFoodType(foodType) {
-  return {
-    basic_food: "基础食材",
-    dish_recipe: "家常菜",
-    packaged_food: "包装食品",
-    market_food: "商品食物",
-  }[foodType] || foodType;
-}
-
-function buildMetaPrefix(item) {
-  const typeLabel = item.food_type === "dish_recipe" ? "家常菜" : prettyFoodType(item.food_type);
-  const categoryLabel = compactCategoryLabel(item.category_top);
-  if (typeLabel && categoryLabel && typeLabel === categoryLabel) {
-    return [typeLabel];
-  }
-  return [typeLabel, categoryLabel].filter(Boolean);
-}
-
-function buildSearchMeta(item) {
-  return [...buildMetaPrefix(item), buildPortionSummary(item.portions || [], 1)]
-    .filter(Boolean)
-    .join(" 路 ");
-}
-
-function buildSelectedMeta(item) {
-  return [...buildMetaPrefix(item), `${formatNumber(item.energy_kcal_100g)} kcal/100g`, `P ${formatNumber(item.protein_g_100g)}g`]
-    .filter(Boolean)
-    .join(" 路 ");
-}
-
-function buildEntryId() {
-  if (window.crypto?.randomUUID) {
-    return window.crypto.randomUUID();
-  }
-  return `entry-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
 function bindEvents() {
-  searchBtn.addEventListener("click", () => searchFoods(searchInput.value.trim()));
+  searchBtn.addEventListener("click", () => void searchFoodsAction(searchInput.value.trim()));
   searchInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      searchFoods(searchInput.value.trim());
+      void searchFoodsAction(searchInput.value.trim());
     }
   });
   document.querySelectorAll(".tag-btn").forEach((button) => {
     button.addEventListener("click", () => {
       searchInput.value = button.dataset.query;
-      searchFoods(button.dataset.query);
+      void searchFoodsAction(button.dataset.query);
     });
   });
-  addFoodBtn.addEventListener("click", () => {
-    void addSelectedFood();
-  });
+  addFoodBtn.addEventListener("click", () => void addSelectedFood());
   cancelEditBtn.addEventListener("click", exitEditMode);
   foodQuantityInput.addEventListener("input", updateSelectedPortionHint);
   foodQuantityInput.addEventListener("keydown", (event) => {
@@ -1010,19 +847,20 @@ function bindEvents() {
     }
   });
   foodUnitSelect.addEventListener("change", updateSelectedPortionHint);
-  bulkAddBtn.addEventListener("click", addBulkFoods);
+  bulkAddBtn.addEventListener("click", () => void addBulkFoods());
   saveProfileBtn.addEventListener("click", () => saveProfile({ collapseAfterSave: true }));
   toggleProfileBtn.addEventListener("click", () => setProfileCollapsed(!state.profileCollapsed));
   clearEntriesBtn.addEventListener("click", () => {
     state.entries = [];
     exitEditMode();
     saveEntries();
-    refreshSummary();
+    void refreshSummary();
   });
   profileForm.addEventListener("change", () => saveProfile());
 }
 
 async function init() {
+  await warmupCatalog();
   loadState();
   fillProfileForm();
   renderProfileSummary();
@@ -1030,11 +868,11 @@ async function init() {
   renderEntryCollections();
   setProfileCollapsed(state.profileCollapsed, { persist: false });
   bindEvents();
-  await searchFoods("");
+  await searchFoodsAction("");
   await refreshSummary();
 }
 
 init().catch((error) => {
   console.error(error);
-  window.alert("页面初始化失败，请查看控制台。");
+  window.alert("页面初始化失败，请刷新后重试。");
 });
